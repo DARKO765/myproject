@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>X O ULTIMATE PRO</title>
+
+<style>
+
+/* 🌍 BASE */
+body{
+margin:0;
+font-family:Arial;
+background:#0f0f0f;
+color:white;
+overflow:hidden;
+}
+
+/* 🎬 SCREENS */
+.screen{
+position:absolute;
+width:100%;
+top:0;
+left:0;
+opacity:0;
+transform:scale(0.9);
+filter:blur(10px);
+transition:0.5s;
+pointer-events:none;
+text-align:center;
+padding:20px;
+}
+
+.screen.active{
+opacity:1;
+transform:scale(1);
+filter:blur(0);
+pointer-events:auto;
+}
+
+.screen.exit{
+opacity:0;
+transform:scale(1.1);
+filter:blur(10px);
+}
+
+/* 🎮 BUTTON */
+button{
+margin:10px;
+padding:12px;
+width:220px;
+border:none;
+border-radius:12px;
+background:#333;
+color:white;
+font-size:16px;
+cursor:pointer;
+transition:0.2s;
+}
+
+button:active{transform:scale(0.9);}
+button:hover{background:#555;}
+
+/* 🎯 BOARD */
+.grid{
+display:grid;
+grid-template-columns:repeat(3,100px);
+gap:8px;
+justify-content:center;
+}
+
+.cell{
+width:100px;
+height:100px;
+background:#222;
+display:flex;
+justify-content:center;
+align-items:center;
+font-size:40px;
+border-radius:12px;
+cursor:pointer;
+transition:0.2s;
+}
+
+.cell:hover{background:#333;}
+
+/* ⏸ PAUSE */
+.overlay{
+position:fixed;
+top:0;
+left:0;
+width:100%;
+height:100%;
+background:rgba(0,0,0,0.8);
+display:none;
+justify-content:center;
+align-items:center;
+}
+
+.overlay.active{display:flex;}
+
+.pause-box{
+background:#222;
+padding:20px;
+border-radius:15px;
+}
+
+/* 🎵 AUDIO */
+#audioBox{
+position:fixed;
+bottom:10px;
+left:10px;
+background:#222;
+padding:10px;
+border-radius:10px;
+}
+
+/* 🎆 PARTICLES */
+.particle{
+position:absolute;
+width:6px;
+height:6px;
+background:gold;
+border-radius:50%;
+animation:fly 1s linear forwards;
+}
+
+@keyframes fly{
+to{
+transform:translate(var(--x),var(--y));
+opacity:0;
+}
+}
+
+</style>
+</head>
+
+<body>
+
+<!-- 🎮 MENU -->
+<div id="menu" class="screen active">
+<h1>🎮 X O ULTIMATE</h1>
+<button onclick="show('game')">▶️ Start</button>
+<button onclick="show('settings')">⚙️ Settings</button>
+</div>
+
+<!-- 🎮 GAME -->
+<div id="game" class="screen">
+<h2>Game</h2>
+
+<div>
+🏆 Wins: <span id="wins">0</span> |
+⭐ XP: <span id="xp">0</span>
+</div>
+
+<select id="level">
+<option value="easy">Easy</option>
+<option value="medium">Medium</option>
+<option value="hard">Hard</option>
+<option value="impossible">Impossible</option>
+</select>
+
+<div class="grid" id="board"></div>
+<div id="status"></div>
+
+<button onclick="pauseGame()">⏸ Pause</button>
+<button onclick="show('menu')">🔙 Menu</button>
+</div>
+
+<!-- ⚙️ SETTINGS -->
+<div id="settings" class="screen">
+<h2>Settings</h2>
+
+<button onclick="toggleMusic()">🎵 Music</button>
+<input type="range" min="0" max="1" step="0.01" onchange="setVolume(this.value)">
+
+<button onclick="setMode('tournament')">🏆 Tournament</button>
+<button onclick="setMode('story')">📖 Story</button>
+
+<button onclick="show('menu')">🔙 Back</button>
+</div>
+
+<!-- ⏸ PAUSE -->
+<div id="pause" class="overlay">
+<div class="pause-box">
+<h2>Paused</h2>
+<button onclick="resumeGame()">▶️ Resume</button>
+<button onclick="resetBoard()">🔄 Restart</button>
+<button onclick="show('menu')">🏠 Menu</button>
+</div>
+</div>
+
+<!-- 🎵 MUSIC -->
+<audio id="bgm" loop>
+<source src="https://www.soundjay.com/free-music/sounds/music-track-1.mp3">
+</audio>
+
+<div id="audioBox">
+<button onclick="toggleMusic()">🎵</button>
+</div>
+
+<script>
+
+/* ===== NAV ===== */
+let current="menu";
+function show(id){
+let c=document.getElementById(current);
+let n=document.getElementById(id);
+c.classList.remove("active");
+c.classList.add("exit");
+n.classList.add("active");
+setTimeout(()=>c.classList.remove("exit"),500);
+current=id;
+}
+
+/* ===== GAME STATE ===== */
+let board=["","","","","","","","",""];
+let wins=+localStorage.getItem("wins")||0;
+let xp=+localStorage.getItem("xp")||0;
+
+let mode="tournament";
+let playerScore=0;
+let aiScore=0;
+let round=1;
+let paused=false;
+
+/* ===== DRAW ===== */
+function draw(){
+let b=document.getElementById("board");
+b.innerHTML="";
+board.forEach((c,i)=>{
+let d=document.createElement("div");
+d.className="cell";
+d.innerText=c;
+d.onclick=()=>move(i);
+b.appendChild(d);
+});
+}
+
+/* ===== CHECK ===== */
+const winComb=[[0,1,2],[3,4,5],[6,7,8],[0,3,6],[1,4,7],[2,5,8],[0,4,8],[2,4,6]];
+function check(p){
+return winComb.some(w=>board[w[0]]==p&&board[w[1]]==p&&board[w[2]]==p);
+}
+function drawGame(){
+return board.every(c=>c!="");
+}
+
+/* ===== MOVE ===== */
+function move(i){
+if(paused||board[i]!="") return;
+
+board[i]="X";
+draw();
+
+if(check("X")) return end("player");
+if(drawGame()) return end("draw");
+
+setTimeout(()=>{
+ai();
+draw();
+if(check("O")) return end("ai");
+if(drawGame()) return end("draw");
+},250);
+}
+
+/* ===== AI ===== */
+function ai(){
+let level=document.getElementById("level").value;
+
+let empty=board.map((v,i)=>v==""?i:null).filter(v=>v!=null);
+
+if(level=="easy"){
+board[rand(empty)]="O";return;
+}
+
+if(level=="medium"){
+let block=findBest("X");
+if(block!=null) return board[block]="O";
+board[rand(empty)]="O";return;
+}
+
+if(level=="hard"){
+let win=findBest("O");
+if(win!=null) return board[win]="O";
+let block=findBest("X");
+if(block!=null) return board[block]="O";
+if(board[4]=="") return board[4]="O";
+board[rand(empty)]="O";return;
+}
+
+/* minimax */
+let best=-Infinity,move=0;
+for(let i=0;i<9;i++){
+if(board[i]==""){
+board[i]="O";
+let score=minimax(false);
+board[i]="";
+if(score>best){best=score;move=i;}
+}}
+board[move]="O";
+}
+
+function minimax(isAI){
+if(check("O")) return 1;
+if(check("X")) return -1;
+if(board.every(c=>c!="")) return 0;
+
+if(isAI){
+let best=-Infinity;
+for(let i=0;i<9;i++){
+if(board[i]==""){
+board[i]="O";
+best=Math.max(best,minimax(false));
+board[i]="";
+}}
+return best;
+}else{
+let best=Infinity;
+for(let i=0;i<9;i++){
+if(board[i]==""){
+board[i]="X";
+best=Math.min(best,minimax(true));
+board[i]="";
+}}
+return best;
+}
+}
+
+function findBest(p){
+for(let i=0;i<9;i++){
+if(board[i]==""){
+board[i]=p;
+if(check(p)){board[i]="";return i;}
+board[i]="";
+}}
+return null;
+}
+
+function rand(arr){
+return arr[Math.floor(Math.random()*arr.length)];
+}
+
+/* ===== END ===== */
+function end(r){
+
+if(r=="player"){wins++;xp+=20;playerScore++;spawn();}
+if(r=="ai"){aiScore++;}
+if(r=="draw"){}
+
+update();
+
+setTimeout(resetBoard,800);
+}
+
+/* ===== RESET ===== */
+function resetBoard(){
+board=["","","","","","","","",""];
+draw();
+}
+
+/* ===== EFFECT ===== */
+function spawn(){
+for(let i=0;i<30;i++){
+let p=document.createElement("div");
+p.className="particle";
+p.style.setProperty("--x",(Math.random()*300-150)+"px");
+p.style.setProperty("--y",(Math.random()*300-150)+"px");
+p.style.left="50%";
+p.style.top="50%";
+document.body.appendChild(p);
+setTimeout(()=>p.remove(),1000);
+}
+}
+
+/* ===== UI ===== */
+function update(){
+document.getElementById("wins").innerText=wins;
+document.getElementById("xp").innerText=xp;
+localStorage.setItem("wins",wins);
+localStorage.setItem("xp",xp);
+}
+
+/* ===== PAUSE ===== */
+function pauseGame(){
+paused=true;
+document.getElementById("pause").classList.add("active");
+}
+function resumeGame(){
+paused=false;
+document.getElementById("pause").classList.remove("active");
+}
+
+/* ===== AUDIO ===== */
+let bgm=document.getElementById("bgm");
+bgm.volume=0.5;
+
+function toggleMusic(){
+bgm.paused?bgm.play():bgm.pause();
+}
+
+function setVolume(v){
+bgm.volume=v;
+}
+
+/* ===== MODE ===== */
+function setMode(m){
+mode=m;
+resetBoard();
+}
+
+/* ===== START ===== */
+draw();
+update();
+
+</script>
+
+</body>
+</html>
