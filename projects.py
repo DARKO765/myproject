@@ -15,5 +15,9 @@ if sign == ("*"):
 
 if sign == ("-"):
   print(num1 - num2)
+
 if sign == ("**"):
   print(num1 ** num2)
+
+if sign == ("//"):
+  print(num1 // num2)
